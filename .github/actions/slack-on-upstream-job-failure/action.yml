@@ -1,0 +1,112 @@
+name: 'Slack'
+description: 'Post build status to slack if any job from needs-context has failed now or in previous job.'
+inputs:
+  needs-context:
+    description: 'https://docs.github.com/en/enterprise-server@3.2/actions/learn-github-actions/contexts#needs-context'
+    required: true
+  slack-channel:
+    description: 'Slack channel where message will be posted'
+    required: true
+  slack-icon-url:
+    description: 'https://api.slack.com/methods/chat.postMessage#arg_icon_url'
+    required: false
+  slack-bot-token:
+    description: 'https://api.slack.com/authentication/token-types'
+    required: true
+  github-token:
+    description: "https://docs.github.com/en/actions/security-guides/automatic-token-authentication"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Get branch names
+      id: branch-name
+      uses: tj-actions/branch-names@v5.1
+    - name: Determine if notification is needed
+      uses: Jimdo/should-i-notify-action@d27f60fd66e60ee85b27d0a9bdf4b5fcd2abd52e
+      id: should_notify
+      with:
+        branch: ${{ steps.branch-name.outputs.current_branch }}
+        needs_context: ${{ inputs.needs-context }}
+        github_token: ${{ inputs.github-token }}
+    - uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Get short SHA
+      id: vars
+      shell: bash
+      run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+    - name: Post to Slack App
+      id: slack-app-post
+      if: ${{ steps.should_notify.outputs.should_send_message == 'yes' }}
+      uses: slackapi/slack-github-action@v1.16.0
+      env:
+        STATUS: >-
+          ${{
+            contains(fromJson(inputs.needs-context).*.result, 'failure') && 'failure'
+            || contains(fromJson(inputs.needs-context).*.result, 'cancelled') && 'cancelled'
+            || 'success'
+          }}
+        SLACK_BOT_TOKEN: ${{ inputs.slack-bot-token }}
+        WORKFLOW_RUN: >-
+          ${{
+            format(
+              '<https://github.com/{0}/actions/runs/{1}|{2}>',
+              github.repository, github.run_id, github.workflow
+            )
+          }}
+        PULL_REQUEST: >-
+          ${{
+            github.event_name == 'pull_request' &&
+            format(
+              '| <https://github.com/{0}/pull/{1}|{2}>',
+              github.repository, github.event.number, github.event.pull_request.title
+            ) ||
+            ''
+          }}
+        COMMIT: >-
+          ${{
+            github.event_name == 'pull_request' &&
+            format(
+              '<https://github.com/{0}/pull/{1}/commits/{2}|{3}>',
+              github.repository, github.event.number, github.event.pull_request.head.sha, steps.vars.outputs.sha_short
+            ) ||
+            format(
+              '<https://github.com/{0}/commits/{1}|{2}>',
+              github.repository, github.sha, steps.vars.outputs.sha_short
+            )
+          }}
+        ACTOR: ${{ format('<https://github.com/{0}|{0}>', github.actor) }}
+      with:
+        # See: https://api.slack.com/methods/chat.postMessages
+        channel-id: ${{ inputs.slack-channel }}
+        # For posting a rich message using Block Kit
+        payload: |
+          {
+            "username": "${{ github.repository }}",
+            "icon_url": "${{ inputs.slack-icon-url}}",
+            "attachments": [
+              {
+                "fallback": "${{ github.repository }}@${{ steps.branch-name.outputs.current_branch }} ${{ github.workflow }} ${{ env.STATUS }}",
+                "color": "${{ env.STATUS == 'success' && '#2EB67D' || (env.STATUS == 'failure' && '#E01E5A' || '#ECB22E') }}",
+                "blocks": [
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "${{env.WORKFLOW_RUN}} ${{ env.STATUS }} ${{env.PULL_REQUEST}}"
+                    }
+                  },
+                  {
+                    "type": "context",
+                    "elements": [
+                      {
+                        "type": "mrkdwn",
+                        "text": "{sha:${{ env.COMMIT }}, actor:${{ env.ACTOR }}}"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
