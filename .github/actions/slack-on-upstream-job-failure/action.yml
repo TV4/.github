@@ -29,9 +29,12 @@ runs:
         branch: ${{ steps.branch-name.outputs.current_branch }}
         needs_context: ${{ inputs.needs-context }}
         github_token: ${{ inputs.github-token }}
-    - uses: actions/checkout@v2
+    - name: Checkout pull request HEAD commit instead of merge commit 
+      #https://github.com/actions/checkout#checkout-pull-request-head-commit-instead-of-merge-commit
+      uses: actions/checkout@v3
+      if: github.event_name == 'pull_request'
       with:
-        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        ref: ${{ github.event.pull_request.head.sha }}
     - name: Get short SHA
       id: vars
       shell: bash
