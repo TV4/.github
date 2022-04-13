@@ -54,7 +54,7 @@ runs:
       if: ${{ (steps.vars.outputs.last-run-status != 'success') || (steps.vars.outputs.this-run-status != 'success') }}
       uses: slackapi/slack-github-action@v1.16.0
       env:
-        STATUS:${{ steps.vars.outputs.this-run-status }}
+        STATUS: ${{ steps.vars.outputs.this-run-status }}
         SLACK_BOT_TOKEN: ${{ inputs.slack-bot-token }}
         WORKFLOW_RUN: >-
           ${{
