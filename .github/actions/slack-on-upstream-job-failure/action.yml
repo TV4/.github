@@ -18,13 +18,6 @@ inputs:
     required: true
 runs:
   using: "composite"
-  env:
-    NEEDS_STATUS: >-
-      ${{
-        contains(fromJson(inputs.needs-context).*.result, 'failure') && 'failure'
-        || contains(fromJson(inputs.needs-context).*.result, 'cancelled') && 'cancelled'
-        || 'success'
-      }}
   steps:
     - name: Get branch names
       id: branch-name
@@ -40,12 +33,28 @@ runs:
     - name: Get short SHA
       id: vars
       shell: bash
-      run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+      run: |
+        LAST_STATUS=${{ steps.last_status.outputs.last_status }}
+        CURRENT_STATUS=${{
+          contains(fromJson(inputs.needs-context).*.result, 'failure') && 'failure'
+          || contains(fromJson(inputs.needs-context).*.result, 'cancelled') && 'cancelled'
+          || 'success'
+        }}
+        SHORT_SHA=$(git rev-parse --short HEAD)
+
+        echo "last workflow status: $LAST_STATUS"
+        echo "current workflow status: $CURRENT_STATUS"
+        echo "short SHA: $SHORT_SHA"
+
+        echo "::set-output name=last-run-status::$LAST_STATUS"
+        echo "::set-output name=this-run-status::$CURRENT_STATUS"
+        echo "::set-output name=sha_short::$SHORT_SHA"
     - name: Post to Slack App
       id: slack-app-post
-      if: ${{ (steps.last_status.outputs.last_status != 'success') || (env.NEEDS_STATUS != 'success') }}
+      if: ${{ (steps.vars.outputs.last-run-status != 'success') || (steps.vars.outputs.this-run-status != 'success') }}
       uses: slackapi/slack-github-action@v1.16.0
       env:
+        STATUS:${{ steps.vars.outputs.this-run-status }}
         SLACK_BOT_TOKEN: ${{ inputs.slack-bot-token }}
         WORKFLOW_RUN: >-
           ${{
@@ -86,14 +95,14 @@ runs:
             "icon_url": "${{ inputs.slack-icon-url}}",
             "attachments": [
               {
-                "fallback": "${{ github.repository }}@${{ steps.branch-name.outputs.current_branch }} ${{ github.workflow }} ${{ env.NEEDS_STATUS }}",
-                "color": "${{ env.NEEDS_STATUS == 'success' && '#2EB67D' || (env.NEEDS_STATUS == 'failure' && '#E01E5A' || '#ECB22E') }}",
+                "fallback": "${{ github.repository }}@${{ steps.branch-name.outputs.current_branch }} ${{ github.workflow }} ${{ env.STATUS }}",
+                "color": "${{ env.STATUS == 'success' && '#2EB67D' || (env.STATUS == 'failure' && '#E01E5A' || '#ECB22E') }}",
                 "blocks": [
                   {
                     "type": "section",
                     "text": {
                       "type": "mrkdwn",
-                      "text": "${{env.WORKFLOW_RUN}} ${{ env.NEEDS_STATUS }} ${{env.PULL_REQUEST}}"
+                      "text": "${{env.WORKFLOW_RUN}} ${{ env.STATUS }} ${{env.PULL_REQUEST}}"
                     }
                   },
                   {
