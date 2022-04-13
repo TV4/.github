@@ -18,16 +18,21 @@ inputs:
     required: true
 runs:
   using: "composite"
+  env:
+    NEEDS_STATUS: >-
+      ${{
+        contains(fromJson(inputs.needs-context).*.result, 'failure') && 'failure'
+        || contains(fromJson(inputs.needs-context).*.result, 'cancelled') && 'cancelled'
+        || 'success'
+      }}
   steps:
     - name: Get branch names
       id: branch-name
       uses: tj-actions/branch-names@v5.1
-    - name: Determine if notification is needed
-      uses: Jimdo/should-i-notify-action@d27f60fd66e60ee85b27d0a9bdf4b5fcd2abd52e
-      id: should_notify
+    - name: Get previous workflow status
+      uses: Mercymeilya/last-workflow-status@v0.3
+      id: last_status
       with:
-        branch: ${{ steps.branch-name.outputs.current_branch }}
-        needs_context: ${{ inputs.needs-context }}
         github_token: ${{ inputs.github-token }}
     - uses: actions/checkout@v2
       with:
@@ -38,15 +43,9 @@ runs:
       run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
     - name: Post to Slack App
       id: slack-app-post
-      if: ${{ steps.should_notify.outputs.should_send_message == 'yes' }}
+      if: ${{ (steps.last_status.outputs.last_status != 'success') || (env.NEEDS_STATUS != 'success') }}
       uses: slackapi/slack-github-action@v1.16.0
       env:
-        STATUS: >-
-          ${{
-            contains(fromJson(inputs.needs-context).*.result, 'failure') && 'failure'
-            || contains(fromJson(inputs.needs-context).*.result, 'cancelled') && 'cancelled'
-            || 'success'
-          }}
         SLACK_BOT_TOKEN: ${{ inputs.slack-bot-token }}
         WORKFLOW_RUN: >-
           ${{
@@ -87,14 +86,14 @@ runs:
             "icon_url": "${{ inputs.slack-icon-url}}",
             "attachments": [
               {
-                "fallback": "${{ github.repository }}@${{ steps.branch-name.outputs.current_branch }} ${{ github.workflow }} ${{ env.STATUS }}",
-                "color": "${{ env.STATUS == 'success' && '#2EB67D' || (env.STATUS == 'failure' && '#E01E5A' || '#ECB22E') }}",
+                "fallback": "${{ github.repository }}@${{ steps.branch-name.outputs.current_branch }} ${{ github.workflow }} ${{ env.NEEDS_STATUS }}",
+                "color": "${{ env.NEEDS_STATUS == 'success' && '#2EB67D' || (env.NEEDS_STATUS == 'failure' && '#E01E5A' || '#ECB22E') }}",
                 "blocks": [
                   {
                     "type": "section",
                     "text": {
                       "type": "mrkdwn",
-                      "text": "${{env.WORKFLOW_RUN}} ${{ env.STATUS }} ${{env.PULL_REQUEST}}"
+                      "text": "${{env.WORKFLOW_RUN}} ${{ env.NEEDS_STATUS }} ${{env.PULL_REQUEST}}"
                     }
                   },
                   {
