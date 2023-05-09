@@ -1,17 +1,17 @@
-name: 'Slack'
-description: 'Post build status to slack if any job from needs-context has failed now or in previous job.'
+name: "Slack"
+description: "Post build status to slack if any job from needs-context has failed now or in previous job."
 inputs:
   needs-context:
-    description: 'https://docs.github.com/en/enterprise-server@3.2/actions/learn-github-actions/contexts#needs-context'
+    description: "https://docs.github.com/en/enterprise-server@3.2/actions/learn-github-actions/contexts#needs-context"
     required: true
   slack-channel:
-    description: 'Slack channel where message will be posted'
+    description: "Slack channel where message will be posted"
     required: true
   slack-icon-url:
-    description: 'https://api.slack.com/methods/chat.postMessage#arg_icon_url'
+    description: "https://api.slack.com/methods/chat.postMessage#arg_icon_url"
     required: false
   slack-bot-token:
-    description: 'https://api.slack.com/authentication/token-types'
+    description: "https://api.slack.com/authentication/token-types"
     required: true
   github-token:
     description: "https://docs.github.com/en/actions/security-guides/automatic-token-authentication"
@@ -27,7 +27,7 @@ runs:
       id: last_status
       with:
         github_token: ${{ inputs.github-token }}
-    - name: Checkout pull request HEAD commit instead of merge commit 
+    - name: Checkout pull request HEAD commit instead of merge commit
       uses: actions/checkout@v3
       with:
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -47,9 +47,9 @@ runs:
         echo "current workflow status: $CURRENT_STATUS"
         echo "short SHA: $SHORT_SHA"
 
-        echo "::set-output name=last-run-status::$LAST_STATUS"
-        echo "::set-output name=this-run-status::$CURRENT_STATUS"
-        echo "::set-output name=sha_short::$SHORT_SHA"
+        echo "last-run-status=$LAST_STATUS" >> $GITHUB_OUTPUT
+        echo "this-run-status=$CURRENT_STATUS" >> $GITHUB_OUTPUT
+        echo "sha_short=$SHORT_SHA" >> $GITHUB_OUTPUT
     - name: Post to Slack App
       id: slack-app-post
       if: ${{ (steps.vars.outputs.last-run-status != 'success') || (steps.vars.outputs.this-run-status != 'success') }}
